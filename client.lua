@@ -33,17 +33,12 @@ local CheckOptions = CheckOptions
 local Bones = Load('bones')
 local listSprite = {}
 
----------------------------------------
---- Source: https://github.com/citizenfx/lua/blob/luaglm-dev/cfx/libs/scripts/examples/scripting_gta.lua
---- Credits to gottfriedleibniz
 local glm = require 'glm'
 
--- Cache common functions
 local glm_rad = glm.rad
 local glm_quatEuler = glm.quatEulerAngleZYX
 local glm_rayPicking = glm.rayPicking
 
--- Cache direction vectors
 local glm_up = glm.up()
 local glm_forward = glm.forward()
 
@@ -56,14 +51,10 @@ local function ScreenPositionToCameraRay()
 		q * glm_up,
 		glm_rad(screen.fov),
 		screen.ratio,
-		0.10000, -- GetFinalRenderedCamNearClip(),
-		10000.0, -- GetFinalRenderedCamFarClip(),
-		0, 0
+		0.10000, 		10000.0, 		0, 0
 	)
 end
----------------------------------------
 
--- Functions
 
 local function DrawTarget()
 	CreateThread(function()
@@ -182,7 +173,6 @@ end
 
 exports('DrawOutlineEntity', DrawOutlineEntity)
 
--- Modified SetupOptions to not wipe tables internally and to continue from a starting slot
 local function SetupOptions(datatable, entity, distance, startSlot)
     local slot = startSlot or 0
     for _, data in pairs(datatable) do
@@ -206,8 +196,7 @@ end
 
 local function CheckEntity(flag, datatable, entity, distance)
 	if not next(datatable) then return end
-    -- Wipe tables here before processing
-    table_wipe(nuiData)
+        table_wipe(nuiData)
     table_wipe(sendDistance)
 	local slot = SetupOptions(datatable, entity, distance)
 	if not next(nuiData) then
@@ -286,21 +275,10 @@ local function EnableTarget()
 			if Config.DisableControls then
 				DisableAllControlActions(0)
 			else
-				DisableControlAction(0, 1, true) -- look left/right
-				DisableControlAction(0, 2, true) -- look up/down
-				DisableControlAction(0, 4, true) -- look down only
-				DisableControlAction(0, 5, true) -- look left only
-				DisableControlAction(0, 6, true) -- look right only
-				DisableControlAction(0, 25, true) -- input aim
-				DisableControlAction(0, 24, true) -- attack
-			end
-			EnableControlAction(0, 30, true) -- move left/right
-			EnableControlAction(0, 31, true) -- move forward/back
-
+				DisableControlAction(0, 1, true) 				DisableControlAction(0, 2, true) 				DisableControlAction(0, 4, true) 				DisableControlAction(0, 5, true) 				DisableControlAction(0, 6, true) 				DisableControlAction(0, 25, true) 				DisableControlAction(0, 24, true) 			end
+			EnableControlAction(0, 30, true) 			EnableControlAction(0, 31, true) 
 			if not hasFocus then
-				EnableControlAction(0, 1, true) -- look left/right
-				EnableControlAction(0, 2, true) -- look up/down
-			end
+				EnableControlAction(0, 1, true) 				EnableControlAction(0, 2, true) 			end
 
 			Wait(0)
 		until not targetActive
@@ -315,31 +293,25 @@ local function EnableTarget()
 		local coords, distance, entity, entityType = RaycastCamera(flag)
 		if distance <= Config.MaxDistance then
 			if entityType > 0 then
-				-- Local(non-net) entity targets
-				if Entities[entity] then
+								if Entities[entity] then
 					CheckEntity(flag, Entities[entity], entity, distance)
 				end
 
-				-- Owned entity targets
-				if NetworkGetEntityIsNetworked(entity) then
+								if NetworkGetEntityIsNetworked(entity) then
 					local data = Entities[NetworkGetNetworkIdFromEntity(entity)]
 					if data then CheckEntity(flag, data, entity, distance) end
 				end
 
-				-- Player and Ped targets
-				if entityType == 1 then
+								if entityType == 1 then
 					local data = Models[GetEntityModel(entity)]
 					if IsPedAPlayer(entity) then data = Players end
 					if data and next(data) then CheckEntity(flag, data, entity, distance) end
 
-				-- Vehicle bones and models
-				elseif entityType == 2 then
-                    -- START OF FIX: Combine all vehicle options
-                    local combinedOptions = {}
+								                elseif entityType == 2 then
+                                        local combinedOptions = {}
                     local lastSlot = 0
 
-                    -- Helper to merge options into a single table
-                    local function mergeOptions(options)
+                                        local function mergeOptions(options)
                         if options and next(options) then
                             for _, optionData in pairs(options) do
                                 lastSlot = lastSlot + 1
@@ -348,36 +320,34 @@ local function EnableTarget()
                         end
                     end
 
-                    -- 1. Get bone options
-                    local closestBone, _, closestBoneName = CheckBones(coords, entity, Bones.Vehicle)
+                                        local closestBone, _, closestBoneName = CheckBones(coords, entity, Bones.Vehicle)
                     if closestBoneName and Bones.Options[closestBoneName] then
                         mergeOptions(Bones.Options[closestBoneName])
                     end
 
-                    -- 2. Get vehicle model options
-                    local model = GetEntityModel(entity)
+                                        local model = GetEntityModel(entity)
                     if Models[model] then
                         mergeOptions(Models[model])
                     end
 
-                    -- 3. Get global vehicle options
-                    if Types[2] then
+                                        if Types[2] then
                         mergeOptions(Types[2])
                     end
-                    
-                    -- Now, process the combined list of options
-                    if next(combinedOptions) then
+
+                                        if next(combinedOptions) then
                         table_wipe(nuiData)
+                        table_wipe(sendData)
                         table_wipe(sendDistance)
-                        local finalSlotCount = SetupOptions(combinedOptions, entity, distance, 0)
-                        
+                        SetupOptions(combinedOptions, entity, distance, 0)
+
                         if next(nuiData) then
                             success = true
-                            SendNUIMessage({ response = 'foundTarget', data = nuiData[1].targeticon, options = nuiData })
+                                                        local firstKey = next(nuiData)
+                            SendNUIMessage({ response = 'foundTarget', data = nuiData[firstKey] and nuiData[firstKey].targeticon, options = nuiData })
                             DrawOutlineEntity(entity, true)
-                            
+
                             while targetActive and success do
-                                local coords2, dist, entity2 = RaycastCamera(flag)
+                                local _, dist, entity2 = RaycastCamera(flag)
                                 if entity ~= entity2 then
                                     LeftTarget()
                                     DrawOutlineEntity(entity, false)
@@ -386,21 +356,15 @@ local function EnableTarget()
                                     EnableNUI(nuiData)
                                     DrawOutlineEntity(entity, false)
                                 else
-                                    -- Re-check options based on new distance
-                                    local newNuiData = {}
-                                    local newSendData = {}
-                                    local newSendDistance = {}
-                                    local tempSlot = 0
-                                    for _, data in pairs(combinedOptions) do
-                                        if CheckOptions(data, entity, dist) then
-                                            tempSlot = tempSlot + 1
-                                            newSendData[tempSlot] = data
-                                            newNuiData[tempSlot] = { icon = data.icon, targeticon = data.targeticon, label = data.label }
-                                            newSendDistance[data.distance] = true
+                                    local hasValidOption = false
+                                    for k, v in pairs(sendDistance) do
+                                        if v then                                             hasValidOption = true
+                                            if dist > k then                                                 sendDistance[k] = false
+                                            end
                                         end
                                     end
 
-                                    if not next(newNuiData) then
+                                                                        if not hasValidOption then
                                         LeftTarget()
                                         DrawOutlineEntity(entity, false)
                                         break
@@ -412,16 +376,12 @@ local function EnableTarget()
                             DrawOutlineEntity(entity, false)
                         end
                     end
-                    -- END OF FIX
-					
-				-- Entity targets
-				elseif entityType > 2 then
+                    								elseif entityType > 2 then
 					local data = Models[GetEntityModel(entity)]
 					if data then CheckEntity(flag, data, entity, distance) end
 				end
 
-				-- Generic targets
-				if not success then
+								if not success then
 					local data = Types[entityType]
 					if data and next(data) then CheckEntity(flag, data, entity, distance) end
 				end
@@ -429,8 +389,7 @@ local function EnableTarget()
 				sleep = sleep + 20
 			end
 			if not success then
-				-- Zone targets
-				local closestDis, closestZone
+								local closestDis, closestZone
 				for k, zone in pairs(Zones) do
 					if distance < (closestDis or Config.MaxDistance) and distance <= zone.targetoptions.distance and zone:isPointInside(coords) then
 						closestDis = distance
@@ -468,8 +427,7 @@ local function EnableTarget()
 							end
 							Wait(0)
 						end
-						if Config.DrawSprite and listSprite[closestZone.name] then -- Check for when the targetActive is false and it removes the zone from listSprite
-							listSprite[closestZone.name].success = false
+						if Config.DrawSprite and listSprite[closestZone.name] then 							listSprite[closestZone.name].success = false
 						end
 						LeftTarget()
 						DrawOutlineEntity(entity, false)
@@ -623,13 +581,11 @@ local function AddTargetEntity(entities, parameters)
 	local distance, options = parameters.distance or Config.MaxDistance, parameters.options
 	if type(entities) == 'table' then
 		for _, entity in pairs(entities) do
-			if NetworkGetEntityIsNetworked(entity) then entity = NetworkGetNetworkIdFromEntity(entity) end -- Allow non-networked entities to be targeted
-			if not Entities[entity] then Entities[entity] = {} end
+			if NetworkGetEntityIsNetworked(entity) then entity = NetworkGetNetworkIdFromEntity(entity) end 			if not Entities[entity] then Entities[entity] = {} end
 			SetOptions(Entities[entity], distance, options)
 		end
 	elseif type(entities) == 'number' then
-		if NetworkGetEntityIsNetworked(entities) then entities = NetworkGetNetworkIdFromEntity(entities) end -- Allow non-networked entities to be targeted
-		if not Entities[entities] then Entities[entities] = {} end
+		if NetworkGetEntityIsNetworked(entities) then entities = NetworkGetNetworkIdFromEntity(entities) end 		if not Entities[entities] then Entities[entities] = {} end
 		SetOptions(Entities[entities], distance, options)
 	end
 end
@@ -639,8 +595,7 @@ exports('AddTargetEntity', AddTargetEntity)
 local function RemoveTargetEntity(entities, labels)
 	if type(entities) == 'table' then
 		for _, entity in pairs(entities) do
-			if NetworkGetEntityIsNetworked(entity) then entity = NetworkGetNetworkIdFromEntity(entity) end -- Allow non-networked entities to be targeted
-			if labels then
+			if NetworkGetEntityIsNetworked(entity) then entity = NetworkGetNetworkIdFromEntity(entity) end 			if labels then
 				if type(labels) == 'table' then
 					for _, v in pairs(labels) do
 						if Entities[entity] then
@@ -657,8 +612,7 @@ local function RemoveTargetEntity(entities, labels)
 			end
 		end
 	elseif type(entities) == 'number' then
-		if NetworkGetEntityIsNetworked(entities) then entities = NetworkGetNetworkIdFromEntity(entities) end -- Allow non-networked entities to be targeted
-		if labels then
+		if NetworkGetEntityIsNetworked(entities) then entities = NetworkGetNetworkIdFromEntity(entities) end 		if labels then
 			if type(labels) == 'table' then
 				for _, v in pairs(labels) do
 					if Entities[entities] then
@@ -1128,7 +1082,6 @@ end
 
 exports('RemoveSpawnedPed', RemovePed)
 
--- Misc. Exports
 
 local function RemoveGlobalPed(labels) RemoveGlobalType(1, labels) end
 exports('RemoveGlobalPed', RemoveGlobalPed)
@@ -1217,7 +1170,6 @@ local function AllowTargeting(bool)
 end
 exports('AllowTargeting', AllowTargeting)
 
--- NUI Callbacks
 
 RegisterNUICallback('selectTarget', function(option, cb)
 	option = tonumber(option) or option
@@ -1276,7 +1228,6 @@ RegisterNUICallback('leftTarget', function(_, cb)
 	cb('ok')
 end)
 
--- Startup thread
 
 CreateThread(function()
 	if Config.Toggle then
@@ -1376,25 +1327,20 @@ CreateThread(function()
 	end
 end)
 
--- Events
 
--- This is to make sure the peds spawn on restart too instead of only when you load/log-in.
 AddEventHandler('onResourceStart', function(resource)
 	if resource ~= currentResourceName then return end
 	SpawnPeds()
 end)
 
--- This will delete the peds when the resource stops to make sure you don't have random peds walking
 AddEventHandler('onResourceStop', function(resource)
 	if resource ~= currentResourceName then return end
 	DeletePeds()
 end)
 
--- Debug Option
 
 if Config.Debug then Load('debug') end
 
--- qtarget interoperability
 
 local qtargetExports = {
 	['raycast'] = RaycastCamera,
