@@ -182,35 +182,33 @@ end
 
 exports('DrawOutlineEntity', DrawOutlineEntity)
 
-local function SetupOptions(datatable, entity, distance, isZone)
-	if not isZone then table_wipe(sendDistance) end
-	table_wipe(nuiData)
-	local slot = 0
-	for _, data in pairs(datatable) do
-		if CheckOptions(data, entity, distance) then
-			slot = data.num or slot + 1
-			if sendData[slot] then slot = #sendData + 1 end
-			sendData[slot] = data
-			sendData[slot].entity = entity
-			nuiData[slot] = {
-				icon = data.icon,
-				targeticon = data.targeticon,
-				label = data.label
-			}
-			if not isZone then
-				sendDistance[data.distance] = true
-			end
-		else
-			if not isZone then
-				sendDistance[data.distance] = false
-			end
-		end
-	end
-	return slot
+-- Modified SetupOptions to not wipe tables internally and to continue from a starting slot
+local function SetupOptions(datatable, entity, distance, startSlot)
+    local slot = startSlot or 0
+    for _, data in pairs(datatable) do
+        if CheckOptions(data, entity, distance) then
+            slot = data.num or slot + 1
+            if sendData[slot] then slot = #sendData + 1 end
+            sendData[slot] = data
+            sendData[slot].entity = entity
+            nuiData[slot] = {
+                icon = data.icon,
+                targeticon = data.targeticon,
+                label = data.label
+            }
+            sendDistance[data.distance] = true
+        else
+            sendDistance[data.distance] = false
+        end
+    end
+    return slot
 end
 
 local function CheckEntity(flag, datatable, entity, distance)
 	if not next(datatable) then return end
+    -- Wipe tables here before processing
+    table_wipe(nuiData)
+    table_wipe(sendDistance)
 	local slot = SetupOptions(datatable, entity, distance)
 	if not next(nuiData) then
 		LeftTarget()
@@ -253,10 +251,12 @@ local function CheckBones(coords, entity, bonelist)
 	for _, v in pairs(bonelist) do
 		if Bones.Options[v] then
 			local boneId = GetEntityBoneIndexByName(entity, v)
-			local bonePos = GetWorldPositionOfEntityBone(entity, boneId)
-			local distance = #(coords - bonePos)
-			if closestBone == -1 or distance < closestDistance then
-				closestBone, closestDistance, closestPos, closestBoneName = boneId, distance, bonePos, v
+			if boneId ~= -1 then
+				local bonePos = GetWorldPositionOfEntityBone(entity, boneId)
+				local distance = #(coords - bonePos)
+				if closestBone == -1 or distance < closestDistance then
+					closestBone, closestDistance, closestPos, closestBoneName = boneId, distance, bonePos, v
+				end
 			end
 		end
 	end
@@ -332,54 +332,89 @@ local function EnableTarget()
 					if IsPedAPlayer(entity) then data = Players end
 					if data and next(data) then CheckEntity(flag, data, entity, distance) end
 
-					-- Vehicle bones and models
+				-- Vehicle bones and models
 				elseif entityType == 2 then
-					local closestBone, _, closestBoneName = CheckBones(coords, entity, Bones.Vehicle)
-					local datatable = Bones.Options[closestBoneName]
+                    -- START OF FIX: Combine all vehicle options
+                    local combinedOptions = {}
+                    local lastSlot = 0
 
-					if datatable and next(datatable) and closestBone then
-						local slot = SetupOptions(datatable, entity, distance)
-						if next(nuiData) then
-							success = true
-							SendNUIMessage({ response = 'foundTarget', data = nuiData[slot].targeticon, options = nuiData })
-							DrawOutlineEntity(entity, true)
-							while targetActive and success do
-								local coords2, dist, entity2 = RaycastCamera(flag)
-								if entity == entity2 then
-									local closestBone2 = CheckBones(coords2, entity, Bones.Vehicle)
-									if closestBone ~= closestBone2 then
-										LeftTarget()
-										DrawOutlineEntity(entity, false)
-										break
-									elseif not hasFocus and IsDisabledControlPressed(0, Config.MenuControlKey) then
-										EnableNUI(nuiData)
-										DrawOutlineEntity(entity, false)
-									else
-										for k, v in pairs(sendDistance) do
-											if v and dist > k then
-												LeftTarget()
-												DrawOutlineEntity(entity, false)
-												break
-											end
-										end
-									end
-								else
-									LeftTarget()
-									DrawOutlineEntity(entity, false)
-									break
-								end
-								Wait(0)
-							end
-							LeftTarget()
-							DrawOutlineEntity(entity, false)
-						end
-					end
+                    -- Helper to merge options into a single table
+                    local function mergeOptions(options)
+                        if options and next(options) then
+                            for _, optionData in pairs(options) do
+                                lastSlot = lastSlot + 1
+                                combinedOptions[lastSlot] = optionData
+                            end
+                        end
+                    end
 
-					-- Vehicle model targets
-					local data = Models[GetEntityModel(entity)]
-					if data then CheckEntity(flag, data, entity, distance) end
+                    -- 1. Get bone options
+                    local closestBone, _, closestBoneName = CheckBones(coords, entity, Bones.Vehicle)
+                    if closestBoneName and Bones.Options[closestBoneName] then
+                        mergeOptions(Bones.Options[closestBoneName])
+                    end
 
-					-- Entity targets
+                    -- 2. Get vehicle model options
+                    local model = GetEntityModel(entity)
+                    if Models[model] then
+                        mergeOptions(Models[model])
+                    end
+
+                    -- 3. Get global vehicle options
+                    if Types[2] then
+                        mergeOptions(Types[2])
+                    end
+                    
+                    -- Now, process the combined list of options
+                    if next(combinedOptions) then
+                        table_wipe(nuiData)
+                        table_wipe(sendDistance)
+                        local finalSlotCount = SetupOptions(combinedOptions, entity, distance, 0)
+                        
+                        if next(nuiData) then
+                            success = true
+                            SendNUIMessage({ response = 'foundTarget', data = nuiData[1].targeticon, options = nuiData })
+                            DrawOutlineEntity(entity, true)
+                            
+                            while targetActive and success do
+                                local coords2, dist, entity2 = RaycastCamera(flag)
+                                if entity ~= entity2 then
+                                    LeftTarget()
+                                    DrawOutlineEntity(entity, false)
+                                    break
+                                elseif not hasFocus and IsDisabledControlPressed(0, Config.MenuControlKey) then
+                                    EnableNUI(nuiData)
+                                    DrawOutlineEntity(entity, false)
+                                else
+                                    -- Re-check options based on new distance
+                                    local newNuiData = {}
+                                    local newSendData = {}
+                                    local newSendDistance = {}
+                                    local tempSlot = 0
+                                    for _, data in pairs(combinedOptions) do
+                                        if CheckOptions(data, entity, dist) then
+                                            tempSlot = tempSlot + 1
+                                            newSendData[tempSlot] = data
+                                            newNuiData[tempSlot] = { icon = data.icon, targeticon = data.targeticon, label = data.label }
+                                            newSendDistance[data.distance] = true
+                                        end
+                                    end
+
+                                    if not next(newNuiData) then
+                                        LeftTarget()
+                                        DrawOutlineEntity(entity, false)
+                                        break
+                                    end
+                                end
+                                Wait(0)
+                            end
+                            LeftTarget()
+                            DrawOutlineEntity(entity, false)
+                        end
+                    end
+                    -- END OF FIX
+					
+				-- Entity targets
 				elseif entityType > 2 then
 					local data = Models[GetEntityModel(entity)]
 					if data then CheckEntity(flag, data, entity, distance) end
@@ -411,7 +446,9 @@ local function EnableTarget()
 					end
 				end
 				if closestZone then
-					local slot = SetupOptions(closestZone.targetoptions.options, entity, distance, true)
+                    table_wipe(nuiData)
+                    table_wipe(sendDistance)
+					local slot = SetupOptions(closestZone.targetoptions.options, entity, distance)
 					if next(nuiData) then
 						success = true
 						SendNUIMessage({ response = 'foundTarget', data = nuiData[slot].targeticon, options = nuiData })
